@@ -366,7 +366,8 @@ function renderLiveFromHA(isActive,zones,cat){
     zl.innerHTML='<div class="na"><div class="bi">🛡️</div><div class="bm">האזור שקט</div><div class="bs">אין אזעקות פעילות</div></div>';
   }else{
     zl.innerHTML=zones.map(function(c){
-      return '<div class="zr" onclick="highlightCity(''+c.replace(/'/g,"\'")+'')"><div class="zp"></div><span>'+c+'</span></div>';
+      var esc=c.replace(/'/g,"\\'");
+      return '<div class="zr" onclick="highlightCity(\''+esc+'\')"><div class="zp"></div><span>'+c+'</span></div>';
     }).join('');
     renderMarkersFromLive(zones.map(function(c){return {name:c};}),zones,0);
   }
@@ -473,12 +474,13 @@ function process(data){
     zl.innerHTML='<div class="na"><div class="bi">🛡️</div><div class="bm">האזור שקט</div><div class="bs">אין אזעקות פעילות</div></div>';
   }else{
     zl.innerHTML=activeCities.map(function(c){
-      return '<div class="zr" onclick="highlightCity(\''+c.replace(/'/g,"\\'")+'\')"><div class="zp"></div><span>'+c+'</span></div>';
+      var esc=c.replace(/'/g,"\\'");
+      return '<div class="zr" onclick="highlightCity(\''+esc+'\')"><div class="zp"></div><span>'+c+'</span></div>';
     }).join('');
   }
 
   // Map markers
-  renderMarkers(activeCities,activeThreat);
+  renderMarkersFromLive(activeCities.map(function(c){return {name:c};}),activeCities,activeThreat);
 
   // History
   renderHistory(data,now);
