@@ -229,8 +229,8 @@ html,body{width:100%;height:100%;background:var(--bg);color:var(--tx);font-famil
 </div>
 
 <script>
-var API = 'https://api.tzevaadom.co.il/alerts-history';
-var ACTIVE_SECS = 120; // if latest alert < 2 min ago → treat as active
+var API_LIVE    = 'https://api.tzevaadom.co.il/notifications';
+var API_HISTORY = 'https://api.tzevaadom.co.il/alerts-history';
 
 // City name → approximate SVG coords on our 300x620 map
 var CITIES = {
@@ -273,11 +273,11 @@ var lastData=[];
 
 async function poll(){
   try{
-    var r=await fetch(API,{cache:'no-store'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    var data=await r.json();
-    lastData=data;
-    process(data);
+    // /notifications = only currently active alerts (empty [] when quiet)
+    var rLive=await fetch(API_LIVE,{cache:'no-store'});
+    if(!rLive.ok)throw new Error('HTTP '+rLive.status);
+    var live=await rLive.json();
+    renderLive(live);
     ge('lu').textContent='עדכון: '+new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     ge('src').style.color='rgba(61,126,255,.45)';
   }catch(e){
@@ -285,6 +285,21 @@ async function poll(){
     ge('src').style.color='rgba(255,80,80,.5)';
     console.warn('API error:',e);
   }
+}
+
+async function pollHistory(){
+  try{
+    var r=await fetch(API_HISTORY,{cache:'no-store'});
+    if(!r.ok)return;
+    var data=await r.json();
+    lastData=data;
+    // count 24h
+    var now=Math.floor(Date.now()/1000);
+    var h24=0,cutoff=now-86400;
+    data.forEach(function(ev){ev.alerts.forEach(function(a){if(a.time>cutoff)h24++;});});
+    ge('sv2').textContent=h24||'—';
+    renderHistory(data,now);
+  }catch(e){console.warn('History error:',e);}
 }
 
 var THREAT={0:'ירי רקטות 🚀',1:'חדירת מחבלים ⚠️',2:'חומרים מסוכנים ☣️',3:'רעידת אדמה 🌍',4:'גל צונאמי 🌊',5:'כלי טיס עוין ✈️',6:'חדירת כלי טיס ✈️'};
@@ -362,12 +377,32 @@ function process(data){
   renderHistory(data,now);
 }
 
-function renderMarkers(cities,threat){
+// Convert real lat/lng to SVG coords (viewBox 0 0 400 640)
+// Israel: lat ~29.5 (Eilat south) to 33.3 (Metula north), lng ~34.2 (west) to 35.9 (east)
+function latLngToSvg(lat,lng){
+  var svgX=Math.round((lng-34.0)/(36.2-34.0)*340+30);  // lng → x: 30..370
+  var svgY=Math.round((33.5-lat)/(33.5-29.3)*580+30);  // lat → y: 30..610 (inverted)
+  return [svgX, svgY];
+}
+
+function renderMarkersFromLive(live,cities,threat){
   var layer=ge('aml');
   layer.innerHTML='';
-  cities.forEach(function(city,i){
-    var c=findCoords(city);
-    var x=c[0],y=c[1],d=(i*0.18).toFixed(2);
+  var placed={};
+  // Use real lat/lng when available (from /notifications)
+  live.forEach(function(item,i){
+    var city=item.name||item.value||'';
+    if(!city)return;
+    var c;
+    if(item.lat&&item.lng){
+      c=latLngToSvg(parseFloat(item.lat),parseFloat(item.lng));
+    }else{
+      c=findCoords(city);
+    }
+    var key=c[0]+','+c[1];
+    if(placed[key])return; // dedupe same spot
+    placed[key]=1;
+    var x=c[0],y=c[1],d=(i*0.15).toFixed(2);
     layer.innerHTML+=
       '<circle cx="'+x+'" cy="'+y+'" r="7" fill="none" stroke="rgba(255,48,48,.55)" stroke-width="1.2"'+
       ' style="animation:zp 1.9s ease-out '+d+'s infinite;transform-origin:'+x+'px '+y+'px"/>'+
@@ -434,11 +469,14 @@ function renderHistory(data,now){
 }
 
 async function init(){
-  try{await poll();}catch(e){ge('le').textContent='שגיאה: '+e.message;ge('le').style.display='block';}
+  try{
+    await Promise.all([poll(), pollHistory()]);
+  }catch(e){ge('le').textContent='שגיאה: '+e.message;ge('le').style.display='block';}
   var ld=ge('loading');
   ld.style.opacity='0';
   setTimeout(function(){ld.style.display='none';},580);
-  setInterval(poll,10000);
+  setInterval(poll,5000);       // live alerts — every 5 seconds
+  setInterval(pollHistory,30000); // history — every 30 seconds
 }
 init();
 </script>
